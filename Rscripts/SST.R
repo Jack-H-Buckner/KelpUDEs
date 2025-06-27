@@ -1,86 +1,63 @@
 
-
-library(rerddap)
-
-## Load the data set (middle for Monterrey bay)
-x2 <- griddap( info("NOAA_DHW"), 
-               fields = "CRW_SST", 
-               stride = 60,
-               time = c('1986-01-01','2025-03-01'),
-               latitude = c(36.7575,36.75725), 
-               longitude = c(-122.145,-122.14) )
-
-
 library(dplyr)
-library(lubridate)
-## calculate average temperatures over the block to get a time series 
-sst_dat2 <- x2$data%>%group_by(time)%>%
-  summarize(sst = mean(CRW_SST))
-
-sst_dat2$year <- year(as.Date(sst_dat2$time))
-sst_dat2$yday <- yday(as.Date(sst_dat2$time))
-sst_dat2$yday_group <- floor(sst_dat2$yday/61.2)
-sst_dat2$year <- sst_dat2$year + yday(as.Date(sst_dat2$time))/365
-
-sst_dat2 <- sst_dat2 %>% group_by(yday_group)%>%
-  mutate(yday_mean = mean(sst))%>%
-  ungroup()%>% mutate(anom = sst-yday_mean)%>%
-  select(year,sst,anom)
-
-write.csv(sst_dat2,"~/github/KelpUDEs/processed_data/sst.csv")
-
-
-
 library(ggplot2)
+library(reshape2)
 library(lubridate)
 
-sst_dat2$quarter <- quarter(as.Date(sst_dat2$time))
-sst_dat2$year <- year(as.Date(sst_dat2$time))
-sst_dat2 <- sst_dat2 %>% group_by(year, quarter) %>% summarize(sst = mean(sst))
-sst_dat2$time <- sst_dat2$year + (sst_dat2$quarter-1)/4
-
-ggplot(sst_dat2 %>% group_by(quarter) %>%
-         mutate(sst_q = mean(sst))%>%ungroup()%>%
-         mutate(sst_anom = sst - sst_q),
-       aes(x = time,y=sst_anom))+
-  geom_line()+theme_bw()+geom_smooth()
-
-sst_dat <- sst_dat2 %>% group_by(quarter) %>%
-  mutate(sst_q = mean(sst))%>%ungroup()%>%
-  mutate(sst_anom = sst - sst_q)
 
 
-write.csv(sst_dat,"~/github/KelpUDEs/processed_data/sst.csv")
+file <- "sst_bins_avail_sst_bins"
 
-sst_anual <- sst_dat2 %>% 
-  mutate(year = floor(time + 0.25)) %>% 
-  group_by(year)%>%
-  summarize(sst = mean(sst))%>%ungroup()%>%
-  mutate(sst_anom = sst - mean(sst))
+dat <- read.csv(paste0("covars/",file,".csv"))
+dat$year <- year(dat$date)
+dat$w <- floor(yday(dat$date)/90)
 
-write.csv(sst_anual,"~/github/KelpUDEs/processed_data/sst_anual.csv")
+length(unique(dat$latitude))
 
 
-
-ggplot(sst_anual, aes(x = year,y=sst))+
-  geom_line()+theme_bw()+geom_smooth()
+# load kelp data
 
 
-library(lubridate)
-sst_dat <- read.csv("~/github/KelpUDEs/processed_data/sst.csv")
+file <- "kelp_bins_50_500m_cenca"
+
+dat_kelp <- read.csv(paste0("data/",file,".csv"))
+dat_kelp$year <- year(dat_kelp$time)
+dat_kelp$q<- quarter(dat_kelp$time)
+
+i <- 1
+mid_lat <- unique(dat_kelp$mid_lat)[i]
+ind <- which.min((unique(dat$latitude)-mid_lat)^2)
+lat <- unique(dat$latitude)[ind]
+dat_new <- dat %>% filter(latitude  == lat)
+dat_new$lat_bin = unique(dat_kelp$lat_bin)[i]
+
+for(i in 2:length(unique(dat_kelp$lat_bin))){
+  mid_lat <- unique(dat_kelp$mid_lat)[i]
+  ind <- which.min((unique(dat$latitude)-mid_lat)^2)
+  lat <- unique(dat$latitude)[ind]
+  dat_new_i <- dat %>% filter(latitude  == lat)
+  dat_new_i$lat_bin = unique(dat_kelp$lat_bin)[i]
+  dat_new <- rbind(dat_new,dat_new_i)
+}
+
+dat_new_ <- dat_new %>% mutate(yday_group = floor(4*yr_day/367))%>%
+  group_by(lat_bin,yday_group)%>%
+  mutate(mean_sst=mean(sst_day_mean))%>%ungroup()%>%
+  group_by(year,yday_group,lat_bin)%>%
+  summarize(sst_anom = mean(sst_day_mean-mean_sst),
+            time = mean(year) + mean(yr_day)/365.25)%>%
+  ungroup()%>%group_by(lat_bin)%>%
+  mutate(sst_anom = scale(sst_anom))%>%
+  filter(!(lat_bin %in% c("36_00")))%>%
+  mutate(year = time, variable = lat_bin,
+         value = sst_anom)%>%ungroup()%>%
+  select(-time,-yday_group,-sst_anom,-lat_bin)
+
+write.csv(dat_new_,"processed_data/sst_500m_bins.csv")
 
 
-sst_dat_cast <- sst_dat %>% select(year,quarter,sst_anom)%>%
-  reshape2::dcast(year ~ quarter)%>%
-  mutate(ave = `1`+`2`+`3`+`4`)%>%
-  filter(!is.na(ave))
 
-names(sst_dat_cast) <- c("time", "q1", "q2", "q3", "q4", "ave")
+dat_cast <- dat_new_ %>% dcast(year ~ variable )
 
-write.csv(sst_dat_cast,"~/github/KelpUDEs/processed_data/sst_quarters.csv")
-
-
-
-
-
-
+plot(dat_cast$lat_36_00450,dat_cast$lat_36_22047
+     )

@@ -7,19 +7,38 @@
 DIRPATH=~/github/#/home/ceoas/bucknejo/
 #
 #
+MODELNAME=UDE_model
+#
+#
+PROCS=15
+#
+#
+NNINPUTS="[1,2]"
+#
+#
+LINEARINPUTS="[]"
+#
+#
+REGWEIGHT=1e5
+#
+#
+PROCERRORS=0.025
+#
+#
+NODE=kawashiro01
+#
+#
 all:
 	@echo ""
-	@echo "    This folder is use to run cross validation for"
+	@echo "    This folder is use to run cross validation for "
 	@echo ""
 	@echo ""
 	@echo "    Please type.....   "
-	@echo "    		make model "
+	@echo "    		make run_cv MODELNAME=UDE_model NNINPUTS='\"[1,2]\"' LINEARINPUTS= '\"[]\"'' REGWEIGHT=1e5 PROCERRORS=0.025 PROCS=15 NODE=kawashiro01"
 #
 #
 run_cv:
-	@for training in $(TRAININGLIST); do \
-	hqsub -P $(PROCS) "julia --threads=$(PROCS) $(DIRPATH)StateSpaceUDEs/Jornada_Range/src/cross_validation.jl $(MODEL) $${training}  $(DATASET) $(REG) $(DIRPATH)" -r solve-$(MODEL)-$${training}-StdOut -q ceoas@$(NODE);\
-	done; 
+	hqsub -P $(PROCS) "julia --threads=$(PROCS) $(DIRPATH)/KelpUDEs/src/run.jl $(MODELNAME) $(NNINPUTS) $(LINEARINPUTS) $(REGWEIGHT) $(PROCERRORS) $(DIRPATH)" -r solve-$(MODELNAME)--StdOut -q ceoas@$(NODE);\
 #
 #
 clean: 
